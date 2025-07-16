@@ -36,6 +36,23 @@ Import MonadNotation.
 Import EqvNotation.
 Import ListNotations.
 
+Parameter fma_nan :
+    forall (prec emax : Z),
+    binary_float prec emax -> 
+    binary_float prec emax ->
+    binary_float prec emax ->
+    {x : binary_float prec emax | is_nan prec emax x = true }.
+
+
+
+Lemma prec_gt_0:
+  FLX.Prec_gt_0 53.
+Proof. unfold FLX.Prec_gt_0. Lia.lia. Qed.
+
+Lemma prec_lt_emax:
+  BinarySingleNaN.Prec_lt_emax 53 1024.
+Proof. unfold BinarySingleNaN.Prec_lt_emax. Lia.lia. Qed.
+
 Set Implicit Arguments.
 Set Contextual Implicit.
 (* end hide *)
@@ -418,35 +435,17 @@ Module Make(A:MemoryAddress.ADDRESS)(IP:MemoryAddress.INTPTR)(SIZEOF:Sizeof)(LLV
       | _ => failwith "llvm_ushl_sat_64 got incorrect / ill-typed inputs"
       end.
 
-  From Flocq Require Import Binary.
-  Parameter fma_nan :
-      forall (prec emax : Z),
-      binary_float prec emax -> 
-      binary_float prec emax ->
-      binary_float prec emax ->
-      {x : binary_float prec emax | is_nan prec emax x = true }.
-
-
-
-  Lemma prec_gt_0:
-    FLX.Prec_gt_0 53.
-  Proof. unfold FLX.Prec_gt_0. Lia.lia. Qed.
-
-  Lemma prec_lt_emax:
-    BinarySingleNaN.Prec_lt_emax 53 1024.
-  Proof. unfold BinarySingleNaN.Prec_lt_emax. Lia.lia. Qed.
-
   Definition b64_fma (rnd_mode : BinarySingleNaN.mode) (v1 : DynamicValues.ll_double) (v2 : DynamicValues.ll_double) (v3 : DynamicValues.ll_double) :=
     @Bfma 53 1024 prec_gt_0 prec_lt_emax (@fma_nan 53 1024) rnd_mode v1 v2 v3 .
   
   Definition llvm_fmuladd_f64 : semantic_function :=
     fun args =>
-        match args with 
-        | [DVALUE_Double a; DVALUE_Double b; DVALUE_Double c] =>
-                let fma_op := b64_fma DynamicValues.FT_Rounding a b c in
-                ret (DVALUE_Double fma_op)
-        | _ => failwith "llvm_fmuladd_f64 got incorrect / ill-typed inputs"
-        end.
+      match args with 
+      | [DVALUE_Double a; DVALUE_Double b; DVALUE_Double c] =>
+        let fma_op := b64_fma DynamicValues.FT_Rounding a b c in
+        ret (DVALUE_Double fma_op)
+      | _ => failwith "llvm_fmuladd_f64 got incorrect / ill-typed inputs"
+      end.
 
   (* Clients of Vellvm can register the names of their own intrinsics
      definitions here. *)
@@ -464,6 +463,5 @@ Module Make(A:MemoryAddress.ADDRESS)(IP:MemoryAddress.INTPTR)(SIZEOF:Sizeof)(LLV
       (ushl_sat_64_decl, llvm_ushl_sat_64); 
       (fmul_add_64, llvm_fmuladd_f64)
     ].
-
 
 End Make.
