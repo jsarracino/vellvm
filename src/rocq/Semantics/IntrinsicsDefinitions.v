@@ -224,6 +224,15 @@ Definition ushl_sat_64_decl: declaration typ :=
     dc_annotations  := []
   |}.
 
+  Definition fmul_add_64 : declaration typ :=
+    {|
+        dc_name := Name "llvm.fmuladd.f64";
+        dc_type := TYPE_Function TYPE_Double [TYPE_Double; TYPE_Double; TYPE_Double] false;
+        dc_param_attrs := ([], [[]]);
+        dc_attrs       := [];
+        dc_annotations  := []
+    |}.
+
 (* This may seem to overlap with `defined_intrinsics`, but there are few differences:
    1. This one is defined outside of the module and could be used at the LLVM AST generation stage without yet specifying memory model.
    2. It includes declarations for built-in memory-dependent intrinisics such as `memcpy`.
@@ -231,7 +240,7 @@ Definition ushl_sat_64_decl: declaration typ :=
 Definition defined_intrinsics_decls :=
   [ fabs_32_decl; fabs_64_decl; maxnum_32_decl ; maxnum_64_decl; minimum_32_decl; minimum_64_decl;
     ushl_sat_1_decl; ushl_sat_8_decl; ushl_sat_16_decl; ushl_sat_32_decl; ushl_sat_64_decl;
-    memcpy_8_32_decl; memcpy_8_64_decl; memset_8_32_decl; memset_8_64_decl; malloc_decl; free_decl ].
+    memcpy_8_32_decl; memcpy_8_64_decl; memset_8_32_decl; memset_8_64_decl; malloc_decl; free_decl; fmul_add_64 ].
 
 (* This functor module provides a way to (extensibly) add the semantic behavior
    for intrinsics defined outside of the core Vellvm operational semantics.
@@ -409,6 +418,36 @@ Module Make(A:MemoryAddress.ADDRESS)(IP:MemoryAddress.INTPTR)(SIZEOF:Sizeof)(LLV
       | _ => failwith "llvm_ushl_sat_64 got incorrect / ill-typed inputs"
       end.
 
+  From Flocq Require Import Binary.
+  Parameter fma_nan :
+      forall (prec emax : Z),
+      binary_float prec emax -> 
+      binary_float prec emax ->
+      binary_float prec emax ->
+      {x : binary_float prec emax | is_nan prec emax x = true }.
+
+
+
+  Lemma prec_gt_0:
+    FLX.Prec_gt_0 53.
+  Proof. unfold FLX.Prec_gt_0. Lia.lia. Qed.
+
+  Lemma prec_lt_emax:
+    BinarySingleNaN.Prec_lt_emax 53 1024.
+  Proof. unfold BinarySingleNaN.Prec_lt_emax. Lia.lia. Qed.
+
+  Definition b64_fma (rnd_mode : BinarySingleNaN.mode) (v1 : DynamicValues.ll_double) (v2 : DynamicValues.ll_double) (v3 : DynamicValues.ll_double) :=
+    @Bfma 53 1024 prec_gt_0 prec_lt_emax (@fma_nan 53 1024) rnd_mode v1 v2 v3 .
+  
+  Definition llvm_fmuladd_f64 : semantic_function :=
+    fun args =>
+        match args with 
+        | [DVALUE_Double a; DVALUE_Double b; DVALUE_Double c] =>
+                let fma_op := b64_fma DynamicValues.FT_Rounding a b c in
+                ret (DVALUE_Double fma_op)
+        | _ => failwith "llvm_fmuladd_f64 got incorrect / ill-typed inputs"
+        end.
+
   (* Clients of Vellvm can register the names of their own intrinsics
      definitions here. *)
   Definition defined_intrinsics : intrinsic_definitions :=
@@ -422,7 +461,8 @@ Module Make(A:MemoryAddress.ADDRESS)(IP:MemoryAddress.INTPTR)(SIZEOF:Sizeof)(LLV
       (ushl_sat_8_decl, llvm_ushl_sat_8);
       (ushl_sat_16_decl, llvm_ushl_sat_16);
       (ushl_sat_32_decl, llvm_ushl_sat_32);
-      (ushl_sat_64_decl, llvm_ushl_sat_64)
+      (ushl_sat_64_decl, llvm_ushl_sat_64); 
+      (fmul_add_64, llvm_fmuladd_f64)
     ].
 
 
