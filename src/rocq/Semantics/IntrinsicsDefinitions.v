@@ -35,7 +35,7 @@ From Flocq.IEEE754 Require Import
 Import MonadNotation.
 Import EqvNotation.
 Import ListNotations.
-
+(* 
 Parameter fma_nan :
     forall (prec emax : Z),
     binary_float prec emax -> 
@@ -43,15 +43,13 @@ Parameter fma_nan :
     binary_float prec emax ->
     {x : binary_float prec emax | is_nan prec emax x = true }.
 
-
-
 Lemma prec_gt_0:
   FLX.Prec_gt_0 53.
 Proof. unfold FLX.Prec_gt_0. Lia.lia. Qed.
 
 Lemma prec_lt_emax:
   BinarySingleNaN.Prec_lt_emax 53 1024.
-Proof. unfold BinarySingleNaN.Prec_lt_emax. Lia.lia. Qed.
+Proof. unfold BinarySingleNaN.Prec_lt_emax. Lia.lia. Qed. *)
 
 Set Implicit Arguments.
 Set Contextual Implicit.
@@ -436,8 +434,8 @@ Module Make(A:MemoryAddress.ADDRESS)(IP:MemoryAddress.INTPTR)(SIZEOF:Sizeof)(LLV
       end.
 
   Definition b64_fma (rnd_mode : BinarySingleNaN.mode) (v1 : DynamicValues.ll_double) (v2 : DynamicValues.ll_double) (v3 : DynamicValues.ll_double) :=
-    @Bfma 53 1024 prec_gt_0 prec_lt_emax (@fma_nan 53 1024) rnd_mode v1 v2 v3 .
-  
+    @Bfma 53 1024 eq_refl eq_refl Float.fma_nan rnd_mode v1 v2 v3.
+    
   Definition llvm_fmuladd_f64 : semantic_function :=
     fun args =>
       match args with 
