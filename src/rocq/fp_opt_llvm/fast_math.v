@@ -19,7 +19,8 @@ From Vellvm Require Import
     Theory
     Theory.Refinement
     Semantics.IntrinsicsDefinitions
-    Semantics.LLVMEvents.
+    Semantics.LLVMEvents
+    Utils.AListFacts.
 
 From ExtLib Require Import 
 Structures.Monads.
@@ -500,7 +501,6 @@ Print eq_l2.
 Instead they will carry error bounds 
 TODO: Define a bisimulation relation for floats? *)
 Variable ε : ll_double.
-Print Bcompare.
 Definition Blt (x : ll_double) (y : ll_double) : bool :=
     match (Bcompare 53 1024 x y) with 
     | Some Lt => true
@@ -608,9 +608,6 @@ clear H0. unfold B2FF in H1. destruct H1.
 destruct (Bminus 53 1024 prec_gt_0 prec_lt_emax (bminus_nan (emax:=1024)) BinarySingleNaN.mode_NE x y); simpl; try discriminate.
 Qed.
 
-(* TODO: Look at the behavior of poison *)
-Print uvalue.
-
 Definition double_refine (d1 d2 : uvalue) :=
     match d1, d2 with
     | UVALUE_Poison t1, UVALUE_Poison t2 =>  dtyp_eqb t1 t2
@@ -621,8 +618,6 @@ Definition double_refine (d1 d2 : uvalue) :=
     | _, _ => False
     end. 
 
-
-Check double_refine.
 (* Bisimulation relation for floats *)
 
 
@@ -981,10 +976,21 @@ replace (default_rel * default_rel)%R with (Rsqr default_rel)%R by (unfold Rsqr;
 apply Rle_refl.
 Qed.
 
+Definition opt_double_refine x y := 
+    match x, y with 
+    | Some x_v, Some y_v => double_refine x_v y_v
+    | _, _ => False
+    end.
+
+Definition local_refine (l1 l2 : local_env) := 
+    opt_double_refine (FMapAList.alist_find (Anon 4%Z) l1) (FMapAList.alist_find (Anon 5%Z) l2) /\
+    FMapAList.alist_remove (Anon 4%Z) (FMapAList.alist_remove (Anon 5%Z) l1) = FMapAList.alist_remove (Anon 4%Z) (FMapAList.alist_remove (Anon 5%Z) l2).
+
 Lemma fma_optim_correct:
 forall g l,
-  eutt (fun '(g1, (l1, u1)) '(g2, (l2, u2)) => 
-  g1 = g2 /\ l1 = l2 /\ 
+  eutt (fun '(l1, (g1, u1)) '(l2, (g2, u2)) => 
+  g1 = g2 /\ (* Neither block changes globals *)
+  local_refine l1 l2 /\ (* %4_left == %5_right, and remainder is equal *)
   (* refinement relation for floats *)
   match u1, u2 with
   | inr u1_v, inr u2_v => 
@@ -993,137 +999,56 @@ forall g l,
   end )
   (interp_cfg2 denote_fma_blk g l) (interp_cfg2 denote_nonfma_blk g l).
 Proof.
-intros.
-unfold interp_cfg2. unfold interp_cfg1. unfold denote_fma_blk, denote_nonfma_blk.
-cbn. rewrite interp_intrinsics_bind. rewrite interp_global_bind.
-rewrite interp_local_bind. rewrite interp_intrinsics_bind.
-rewrite interp_global_bind.
-rewrite interp_local_bind.
-rewrite interp_intrinsics_ret.
-rewrite interp_global_ret.
-rewrite interp_local_ret. simpl.  
-simpl. unfold interp_intrinsics. unfold interp_intrinsics_h.
-unfold handle_intrinsics. simpl.
-unfold interp.
-tau_steps.
-unfold observe.
-simpl.
-cbn.
-destruct (@RelDec.rel_dec_p int_ast
-(@eq int_ast) eq_dec_int
-Z.RelDec_Correct_zeq 4%Z 4%Z); try Lia.lia.
-simpl.
-tau_steps.
-unfold observe.
-simpl.
-cbn.
-destruct (@RelDec.rel_dec_p int_ast
-(@eq int_ast) eq_dec_int
-Z.RelDec_Correct_zeq 5%Z 5%Z); try Lia.lia.
-simpl.
-tau_steps.
-unfold observe.
-simpl.
-cbn.
-apply eutt_Ret.
-repeat split.
-unfold FMapAList.alist_add. 
+    intros.
+    unfold interp_cfg2. unfold interp_cfg1. unfold denote_fma_blk, denote_nonfma_blk.
+    cbn. rewrite interp_intrinsics_bind. rewrite interp_global_bind.
+    rewrite interp_local_bind. rewrite interp_intrinsics_bind.
+    rewrite interp_global_bind.
+    rewrite interp_local_bind.
+    rewrite interp_intrinsics_ret.
+    rewrite interp_global_ret.
+    rewrite interp_local_ret. simpl.  
+    simpl. unfold interp_intrinsics. unfold interp_intrinsics_h.
+    unfold handle_intrinsics. simpl.
+    unfold interp.
+    tau_steps.
+    unfold observe.
+    simpl.
+    cbn.
+    destruct (@RelDec.rel_dec_p int_ast
+    (@eq int_ast) eq_dec_int
+    Z.RelDec_Correct_zeq 4%Z 4%Z); try Lia.lia.
+    simpl.
+    tau_steps.
+    unfold observe.
+    simpl.
+    cbn.
+    destruct (@RelDec.rel_dec_p int_ast
+    (@eq int_ast) eq_dec_int
+    Z.RelDec_Correct_zeq 5%Z 5%Z); try Lia.lia.
+    simpl.
+    tau_steps.
+    unfold observe.
+    simpl.
+    cbn.
+    apply eutt_Ret.
+    repeat split.
 
-Print local_env.
-Print FMapAList.alist.
-
-
-f_equal. admit.
-admit.
-apply refinement_rel_bfma_non_fma.
-
-Admitted. 
-(* TODO: move fma intrinsic definition to vellvm and retry proof *)
+    - unfold opt_double_refine.
+        do 2 erewrite alist_find_add_eq.
+        eapply refinement_rel_bfma_non_fma.
+    -   erewrite env_add_remove_eq.
+        erewrite env_add_remove_neq; try congruence.
+        erewrite env_add_remove_eq.
+        erewrite env_add_remove_neq; try congruence.
+        erewrite env_add_remove_eq.
+        eauto.
+    - apply refinement_rel_bfma_non_fma.
+Qed. 
 End FastMath. 
 
-Section F_intrinsics.
-Import LLVMIO.    
 
-Import ListNotations.
-(* TODO: Add intrinsics for FMA in Vellvm *)
-(* Registering the fmul_add intrinsics *)
-Definition fmul_add_64 : declaration typ :=
-    {|
-        dc_name := Name "llvm.fmuladd.f64";
-        dc_type := TYPE_Function TYPE_Double [TYPE_Double; TYPE_Double; TYPE_Double] false;
-        dc_param_attrs := ([], [[]]);
-        dc_attrs       := [];
-        dc_annotations  := []
-    |}.
-
-(* Extending the defined intrinsics in Vellvm VIR *)
-Definition defined_intrinsics_decls' :=
-    defined_intrinsics_decls ++ [fmul_add_64].
-
-(* Intrinsics semantic functions *)
-
-(* Internally, invocation of an intrinsic looks no different than that of 
-an external function call, so each LLVM instrinsic instruction should produce
-a Call effect 
-
-Each intrinsic is identified by its name (a string) and its denotation 
-is given by a function from a list of dynamic values to a dynamic value
-(for possibly an error).
-
-This layer is useful for implementing "Pure value" intrtinsics like 
-floating-point operations, etc. Also note that such intrinsics cannot 
-themselves generate any other effects.
-
-Eacg (pure) instrinsic is defined by a function of the following type.
-
-- each intrinsic should "morally" be a total function: assuming the LLVM
-program is well formed, the instrinsic should always produce an LLVM value
-(whuch itself might be a posion or undef)
-
-- error should be returned only in the case that the LLVM program is ill-formed
-(e.g., if the wrong number and/or type of arguments is given to the intrinsic)
-
-The semantic_function is a total function, which takes in a list of 
-dvalues and returns a dvalue if the LLVM program is well-defined or 
-returns an error if it is ill-defined
-
-intrinsic_definitions is an association list which maps 
-intrinsic names to their semantic definition.
-
-The intrinsics interpreter looks for Calls to instrinsics defined 
-by its argument and runs their semantic function, raising 
-an error in case of exception.
-
-Unknown Calls (either to other intrinsics or external calls)
-are passed though unchanged
-
-
-(* Call to an intrinsic whose implementation do not rely on the implementation of the memory model *)
-(* Intrinsics may raise an exception by returning inl *)
-Variant IntrinsicE : Type -> Type :=
-    | Intrinsic : forall (t:dtyp) (f:string) (args:list dvalue), IntrinsicE (uvalue + dvalue).
-    
-The reason I need to include LLVMInteractions is that
-intrinsics are defined using the intrinsicE effect    
-    
-*)
-
-(* TODO: Revisit this because ret (inr uvalue)*)
-Definition llvm_fmuladd_f64 : semantic_function :=
-    fun args =>
-        match args with 
-        | [DVALUE_Double a; DVALUE_Double b; DVALUE_Double c] =>
-                let fma_op := b64_fma FT_Rounding a b c in
-                ret (DVALUE_Double fma_op)
-        | _ => failwith "llvm_fmuladd_f64 got incorrect / ill-typed inputs"
-        end.
-
-Locate semantic_function.
-Definition defined_intrinsics' :=
-    defined_intrinsics ++ [(fmul_add_64, llvm_fmuladd_f64)].
-
-End F_intrinsics.
-
+End FM.
 
 
 

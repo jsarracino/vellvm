@@ -52,6 +52,7 @@ Arguments alist_remove {_ _ _ _}.
 Module AlistNotations.
   Notation "m '⊑' m'" := (alist_le m m') (at level 45).
   Notation "m '@' x"  := (alist_find x m) (at level 50).
+  Notation "m '//' x"  := (alist_remove x m) (at level 55).
 End AlistNotations.
 
 Section alistFacts.
@@ -61,6 +62,74 @@ Section alistFacts.
   Context {RRC : @RelDec_Correct K (@eq K) RR}.
 
   Import AlistNotations.
+
+  Lemma env_rem_twice: 
+    forall (m: alist K V) k,
+      m // k // k = m // k.
+  Proof.
+    induction m; simpl; try now intuition eauto.
+    intros.
+    destruct a as [k' v]; simpl.
+    destruct (RelDec.rel_dec k k') eqn:?; simpl; eauto.
+    erewrite Heqb.
+    simpl.
+    f_equal; eauto.
+  Qed.
+
+  Lemma env_rem_permute: 
+    forall (l: alist K V) k k',
+      l // k // k' = l // k' // k.
+  Proof.
+    intros.
+    destruct (RelDec.rel_dec k k') eqn:?.
+    - assert (k = k') by (
+        eapply RelDec.rel_dec_correct; eauto
+      ).
+      subst.
+      reflexivity.
+    - revert l k k' Heqb.
+      induction l; simpl; try now intuition eauto.
+      intros.
+      destruct a as [k'' v]; simpl.
+      destruct (RelDec.rel_dec k k'') eqn:?; simpl.
+      + assert (k = k'') by (
+          eapply RelDec.rel_dec_correct; eauto
+        ).
+        subst.
+        erewrite RelDec.rel_dec_sym; try typeclasses eauto.
+        erewrite Heqb; simpl.
+        erewrite Heqb0; simpl.
+        eapply IHl.
+        eauto.
+      + destruct (RelDec.rel_dec k' k'') eqn:?; simpl; try now intuition eauto.
+        erewrite Heqb0; simpl.
+        f_equal; eauto.
+  Qed.
+
+  Lemma env_add_remove_eq: 
+    forall (l: alist K V) k v, 
+      alist_add k v l // k = l // k.
+  Proof.
+    intros.
+    simpl.
+    erewrite RelDec.rel_dec_eq_true; try typeclasses eauto; eauto.
+    simpl.
+    eapply env_rem_twice.
+  Qed.
+
+  Lemma env_add_remove_neq: 
+    forall (l: alist K V) k k' v, 
+      k <> k' ->
+      alist_add k' v l // k = alist_add k' v (l // k).
+  Proof.
+    intros.
+    simpl.
+    erewrite RelDec.rel_dec_neq_false; eauto; try typeclasses eauto.
+    simpl.
+    unfold alist_add.
+    f_equal.
+    eapply env_rem_permute.
+  Qed. 
 
   Section Alist_In.
 
